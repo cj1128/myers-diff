@@ -1,10 +1,3 @@
-/*
-* @Author: CJ Ting
-* @Date:   2017-04-08 19:12:05
-* @Last Modified by:   CJ Ting
-* @Last Modified time: 2017-04-16 11:28:28
- */
-
 package main
 
 import (
@@ -12,17 +5,17 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
-	"strings"
 )
 
-type Operation uint
+type operation uint
 
-const INSERT Operation = 1
-const DELETE Operation = 2
-const MOVE Operation = 3
+const (
+	INSERT operation = 1
+	DELETE           = 2
+	MOVE             = 3
+)
 
-func (op Operation) String() string {
+func (op operation) String() string {
 	switch op {
 	case INSERT:
 		return "INS"
@@ -35,41 +28,10 @@ func (op Operation) String() string {
 	}
 }
 
-var colors = map[Operation]string{
+var colors = map[operation]string{
 	INSERT: "\033[32m",
 	DELETE: "\033[31m",
 	MOVE:   "\033[39m",
-}
-
-// 支持使用负数作为索引
-type IntArray []int
-
-func (a IntArray) get(i int) int {
-	if i < 0 {
-		return a[len(a)+i]
-	}
-	return a[i]
-}
-
-func (a IntArray) set(i, v int) {
-	if i < 0 {
-		a[len(a)+i] = v
-	} else {
-		a[i] = v
-	}
-}
-
-func (a IntArray) clone() IntArray {
-	return append(IntArray{}, a...)
-}
-
-func (a IntArray) String() string {
-	k := len(a) / 2
-	var result []string
-	for i := -k; i <= k; i++ {
-		result = append(result, strconv.Itoa(a.get(i)))
-	}
-	return strings.Join(result, " ")
 }
 
 func main() {
@@ -77,29 +39,36 @@ func main() {
 		fmt.Println("usage: myers-diff [src] [dst]")
 		os.Exit(1)
 	}
+
 	src, err := getFileLines(os.Args[1])
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	dst, err := getFileLines(os.Args[2])
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	generateDiff(src, dst)
 }
 
 func generateDiff(src, dst []string) {
 	script := shortestEditScript(src, dst)
+
 	srcIndex, dstIndex := 0, 0
+
 	for _, op := range script {
 		switch op {
 		case INSERT:
 			fmt.Println(colors[op] + "+" + dst[dstIndex])
 			dstIndex += 1
+
 		case MOVE:
 			fmt.Println(colors[op] + " " + src[srcIndex])
 			srcIndex += 1
 			dstIndex += 1
+
 		case DELETE:
 			fmt.Println(colors[op] + "-" + src[srcIndex])
 			srcIndex += 1
@@ -108,33 +77,47 @@ func generateDiff(src, dst []string) {
 }
 
 // 生成最短的编辑脚本
-func shortestEditScript(src, dst []string) []Operation {
+func shortestEditScript(src, dst []string) []operation {
 	n := len(src)
 	m := len(dst)
 	max := n + m
-	v := make(IntArray, 2*max+1)
-	var trace []IntArray
+	var trace []map[int]int
 	var x, y int
 
 loop:
 	for d := 0; d <= max; d++ {
-		trace = append(trace, v.clone())
+		// 最多只有 d+1 个 k
+		v := make(map[int]int, d+2)
+		trace = append(trace, v)
+
+		// 需要注意处理对角线
+		if d == 0 {
+			t := 0
+			for len(src) > t && len(dst) > t && src[t] == dst[t] {
+				t++
+			}
+			v[0] = t
+			continue
+		}
+
+		lastV := trace[d-1]
+
 		for k := -d; k <= d; k += 2 {
-			if k == -d {
-				x = v.get(k + 1)
-			} else if k != d && v.get(k-1) < v.get(k+1) {
-				x = v.get(k + 1)
-			} else {
-				x = v.get(k-1) + 1
+			// 向下
+			if k == -d || (k != d && lastV[k-1] < lastV[k+1]) {
+				x = lastV[k+1]
+			} else { // 向右
+				x = lastV[k-1] + 1
 			}
 
 			y = x - k
 
+			// 处理对角线
 			for x < n && y < m && src[x] == dst[y] {
 				x, y = x+1, y+1
 			}
 
-			v.set(k, x)
+			v[k] = x
 
 			if x == n && y == m {
 				break loop
@@ -142,13 +125,11 @@ loop:
 		}
 	}
 
-	// this is for debug
-	// for d := len(trace) - 1; d > 0; d-- {
-	// 	fmt.Println(d, ":", trace[d])
-	// }
+	// for debug
+	// printTrace(trace)
 
 	// 反向回溯
-	var script []Operation
+	var script []operation
 
 	x = n
 	y = m
@@ -156,51 +137,81 @@ loop:
 
 	for d := len(trace) - 1; d > 0; d-- {
 		k = x - y
-		v := trace[d]
-		if k == -d || (k != d && v.get(k-1) < v.get(k+1)) {
+		lastV := trace[d-1]
+
+		if k == -d || (k != d && lastV[k-1] < lastV[k+1]) {
 			prevK = k + 1
 		} else {
 			prevK = k - 1
 		}
-		prevX = v.get(prevK)
+
+		prevX = lastV[prevK]
 		prevY = prevX - prevK
 
-		// fmt.Printf("d: %d, k: %d, x: %d, y: %d, prevX: %d, prevY: %d\n", d, k, x, y, prevX, prevY)
-
 		for x > prevX && y > prevY {
-			script = prepend(script, MOVE)
+			script = append(script, MOVE)
 			x -= 1
 			y -= 1
 		}
 
 		if x == prevX {
-			script = prepend(script, INSERT)
+			script = append(script, INSERT)
 		} else {
-			script = prepend(script, DELETE)
+			script = append(script, DELETE)
 		}
 
 		x, y = prevX, prevY
 	}
 
-	return script
+	if trace[0][0] != 0 {
+		for i := 0; i < trace[0][0]; i++ {
+			script = append(script, MOVE)
+		}
+	}
+
+	return reverse(script)
 }
 
-func prepend(s []Operation, op Operation) []Operation {
-	return append([]Operation{op}, s...)
+func printTrace(trace []map[int]int) {
+	for d := 0; d < len(trace); d++ {
+		fmt.Printf("d = %d:\n", d)
+		v := trace[d]
+		for k := -d; k <= d; k += 2 {
+			x := v[k]
+			y := x - k
+			fmt.Printf("  k = %2d: (%d, %d)\n", k, x, y)
+		}
+	}
+}
+
+func reverse(s []operation) []operation {
+	result := make([]operation, len(s))
+
+	for i, v := range s {
+		result[len(s)-1-i] = v
+	}
+
+	return result
 }
 
 func getFileLines(p string) ([]string, error) {
 	f, err := os.Open(p)
+
 	if err != nil {
 		return nil, err
 	}
+
 	scanner := bufio.NewScanner(f)
+
 	var lines []string
+
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 	}
+
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
+
 	return lines, nil
 }
