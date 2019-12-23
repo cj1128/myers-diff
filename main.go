@@ -201,6 +201,8 @@ func getFileLines(p string) ([]string, error) {
 		return nil, err
 	}
 
+	defer f.Close()
+
 	scanner := bufio.NewScanner(f)
 
 	var lines []string
