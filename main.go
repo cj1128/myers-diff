@@ -97,6 +97,9 @@ loop:
 				t++
 			}
 			v[0] = t
+			if t == len(src) && t == len(dst) {
+				break loop
+			}
 			continue
 		}
 
