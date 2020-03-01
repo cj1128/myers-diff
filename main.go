@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"log"
 	"os"
+	"strings"
 )
 
 type operation uint
@@ -35,19 +37,39 @@ var colors = map[operation]string{
 }
 
 func main() {
-	if len(os.Args) < 3 {
-		fmt.Println("usage: myers-diff [src] [dst]")
-		os.Exit(1)
-	}
+	charMode := flag.Bool("char", false, "diff in char mode")
+	flag.Parse()
 
-	src, err := getFileLines(os.Args[1])
-	if err != nil {
-		log.Fatal(err)
-	}
+	var src []string
+	var dst []string
 
-	dst, err := getFileLines(os.Args[2])
-	if err != nil {
-		log.Fatal(err)
+	if *charMode {
+		args := flag.Args()
+
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: myers-diff -char [src_string] [dst_string]")
+			os.Exit(1)
+		}
+
+		src = strings.Split(args[0], "")
+		dst = strings.Split(args[1], "")
+	} else {
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage: myers-diff [src_file] [dst_file]")
+			os.Exit(1)
+		}
+
+		var err error
+
+		src, err = getFileLines(os.Args[1])
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		dst, err = getFileLines(os.Args[2])
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	generateDiff(src, dst)
